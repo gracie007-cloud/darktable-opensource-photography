@@ -183,7 +183,7 @@ invert_1f(read_only image2d_t in, write_only image2d_t out, const int width, con
   const float pixel = read_imagef(in, sampleri, (int2)(x, y)).x;
   const float inv_pixel = color[FC(ry+y, rx+x, filters)] - pixel;
 
-  write_imagef (out, (int2)(x, y), (float4)(clamp(inv_pixel, 0.0f, 1.0f), 0.0f, 0.0f, 0.0f));
+  write_imagef (out, (int2)(x, y), (float4)(clipf(inv_pixel), 0.0f, 0.0f, 0.0f));
 }
 
 kernel void
@@ -209,7 +209,7 @@ whitebalance_1f(read_only image2d_t in, write_only image2d_t out, const int widt
   const int x = get_global_id(0);
   const int y = get_global_id(1);
   if(x >= width || y >= height) return;
-  const float pixel = fmax(0.0f, read_imagef(in, sampleri, (int2)(x, y)).x);
+  const float pixel = read_imagef(in, sampleri, (int2)(x, y)).x;
   write_imagef(out, (int2)(x, y), pixel * coeffs[FC(y, x, filters)]);
 }
 
@@ -220,7 +220,7 @@ whitebalance_1f_xtrans(read_only image2d_t in, write_only image2d_t out, const i
   const int x = get_global_id(0);
   const int y = get_global_id(1);
   if(x >= width || y >= height) return;
-  const float pixel = fmax(0.0f, read_imagef(in, sampleri, (int2)(x, y)).x);
+  const float pixel = read_imagef(in, sampleri, (int2)(x, y)).x;
   write_imagef(out, (int2)(x, y), pixel * coeffs[FCxtrans(y, x, xtrans)]);
 }
 
@@ -232,7 +232,7 @@ whitebalance_4f(read_only image2d_t in, write_only image2d_t out, const int widt
   const int x = get_global_id(0);
   const int y = get_global_id(1);
   if(x >= width || y >= height) return;
-  const float4 pixel = fmax(0.0f, read_imagef(in, sampleri, (int2)(x, y)));
+  const float4 pixel = read_imagef(in, sampleri, (int2)(x, y));
   write_imagef (out, (int2)(x, y), (float4)(pixel.x * coeffs[0], pixel.y * coeffs[1], pixel.z * coeffs[2], pixel.w));
 }
 
@@ -261,7 +261,7 @@ highlights_4f_clip (read_only image2d_t in, write_only image2d_t out, const int 
 
   // 4f/pixel means that this has been debayered already.
   // it's thus hopeless to recover highlights here (this code path is just used for preview and non-raw images)
-  float4 pixel = fmax(0.0f, read_imagef(in, sampleri, (int2)(x, y)));
+  float4 pixel = read_imagef(in, sampleri, (int2)(x, y));
   // default: // 0, DT_IOP_HIGHLIGHTS_CLIP
   pixel.x = fmin(clip, pixel.x);
   pixel.y = fmin(clip, pixel.y);
@@ -287,7 +287,7 @@ highlights_1f_clip (read_only image2d_t in, write_only image2d_t out,
   if((icol >= 0) && (irow >= 0) && (irow < iheight) && (icol < iwidth))
   {
     const int color = fcol(irow, icol, filters, xtrans);
-    pixel = fmax(0.0f, read_imagef(in, sampleri, (int2)(icol, irow)).x);
+    pixel = read_imagef(in, sampleri, (int2)(icol, irow)).x;
     pixel = fmin(clips[color], pixel);
   }
   write_imagef (out, (int2)(x, y), pixel);
@@ -317,7 +317,7 @@ kernel void highlights_false_color(
 
   if((irow >= 0) && (icol >= 0) && (icol < iwidth) && (irow < iheight))
   {
-    const float ival = fmax(0.0f, read_imagef(in, sampleri, (int2)(icol, irow)).x);
+    const float ival = read_imagef(in, sampleri, (int2)(icol, irow)).x;
     const int c = fcol(irow, icol, filters, xtrans);
     oval = (ival < clips[c]) ? 0.2f * ival : 1.0f;
   }
@@ -2726,7 +2726,7 @@ kernel void md_vignette(read_only image2d_t in,
   const float cx = ((float)(roix + x) - w2);
   const float cy = ((float)(roiy + y) - h2);
   const float4 spline =
-    _interpolate_linear_spline(knots_vig, vig, knots, r * sqrt(cx*cx + cy*cy));
+    _interpolate_linear_spline(knots_vig, vig, knots, r * dt_fast_hypot(cx, cy));
 
   float4 pixel  = read_imagef(in, sampleri, (int2)(x, y));
   pixel /= fmax(1e-4, spline);
@@ -2755,7 +2755,7 @@ kernel void lens_man_vignette(read_only image2d_t in,
 
   const float dx = ((float)(roix + x) - w2);
   const float dy = ((float)(roiy + y) - h2);
-  const float radius = sqrt(dx*dx + dy*dy) * inv_maxr;
+  const float radius = dt_fast_hypot(dx, dy) * inv_maxr;
   const float4 val = fmax(0.0f, intensity * _calc_vignette_spline(radius, spline, splinesize));
 
   float4 pixel  = read_imagef(in, samplerA, (int2)(x, y));
@@ -3057,7 +3057,7 @@ kernel void md_lens_correction(read_only image2d_t in,
 
   const float cx = ((float)(roox + x) - w2) / scale;
   const float cy = ((float)(rooy + y) - h2) / scale;
-  const float radius = r * sqrt(cx*cx + cy*cy);
+  const float radius = r * dt_fast_hypot(cx, cy);
   const float limw = (float)iwidth - 1.0f;
   const float limh = (float)iheight - 1.0f;
   float output[4];

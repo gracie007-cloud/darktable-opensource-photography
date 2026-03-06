@@ -1683,8 +1683,8 @@ static void _thumbs_ask_for_discard(dt_thumbtable_t *table)
 
   dt_mipmap_size_t embeddedl = dt_mipmap_cache_get_min_mip_from_pref(embedded);
 
-  int min_level = 8;
-  int max_level = 0;
+  int min_level = DT_MIPMAP_LDR_MAX;
+  int max_level = DT_MIPMAP_0;
   if(hql != table->pref_hq)
   {
     min_level = MIN(table->pref_hq, hql);
@@ -1696,6 +1696,15 @@ static void _thumbs_ask_for_discard(dt_thumbtable_t *table)
     max_level = MAX(max_level, MAX(table->pref_embedded, embeddedl));
   }
 
+  // switching between auto/never options
+  if (max_level == DT_MIPMAP_NONE && min_level == DT_MIPMAP_LDR_MAX)
+  {
+    // err on side of discarding too many thumbnails: a quick
+    // survey of vintage raw files shows a lowest res embedded
+    // JPEG of 1616x1080 (found in 2011 & 2014 Sony)
+    min_level = DT_MIPMAP_4;
+  }
+
   sqlite3_stmt *stmt = NULL;
 
   if(min_level < max_level)
@@ -1703,9 +1712,9 @@ static void _thumbs_ask_for_discard(dt_thumbtable_t *table)
     gchar *txt =
       g_strdup(_("you have changed the settings related to"
                  " how thumbnails are generated.\n"));
-    if(max_level >= DT_MIPMAP_8 && min_level == DT_MIPMAP_0)
+    if(max_level >= DT_MIPMAP_LDR_MAX && min_level == DT_MIPMAP_0)
       dt_util_str_cat(&txt, _("all cached thumbnails need to be invalidated.\n\n"));
-    else if(max_level >= DT_MIPMAP_8)
+    else if(max_level >= DT_MIPMAP_LDR_MAX)
       dt_util_str_cat
         (&txt,
          _("cached thumbnails starting from level %d need to be invalidated.\n\n"),
@@ -1731,7 +1740,7 @@ static void _thumbs_ask_for_discard(dt_thumbtable_t *table)
       while(sqlite3_step(stmt) == SQLITE_ROW)
       {
         const dt_imgid_t imgid = sqlite3_column_int(stmt, 0);
-        for(int i = max_level - 1; i >= min_level; i--)
+        for(int i = max_level; i >= min_level; i--)
         {
           dt_mipmap_cache_remove_at_size(imgid, i);
         }

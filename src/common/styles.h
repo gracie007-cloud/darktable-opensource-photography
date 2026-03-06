@@ -43,6 +43,12 @@ typedef enum dt_style_applymode_t
   DT_STYLE_HISTORY_OVERWRITE = 1
 } dt_style_applymode_t;
 
+typedef enum dt_style_previewmode_t {
+  DT_STYLE_PREVIEW_NO,
+  DT_STYLE_PREVIEW_DEFAULT,
+  DT_STYLE_PREVIEW_LARGE
+} dt_style_previewmode;
+
 typedef struct dt_style_item_t
 {
   int num, selimg_num, enabled, multi_priority;
@@ -124,6 +130,8 @@ gboolean dt_styles_exists(const char *name);
 
 /** returns TRUE if the style has a module order defined */
 gboolean dt_styles_has_module_order(const char *name);
+/** the returned iop order list is migrated to the current version ensuring
+ *  that all modules are listed */
 GList *dt_styles_module_order_list(const char *name);
 
 /** get a list of styles based on filter string */

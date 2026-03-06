@@ -344,6 +344,28 @@ gboolean dt_view_manager_switch_by_view(dt_view_manager_t *vm,
   }
 
   /* change current view to the new view */
+
+  /* 
+     Race Condition
+ 
+     the current view is set to the new view prior to
+     initializing.  Plugins are initialized according to
+     the current view, so it must be set prior.
+
+     If a Lua script tries to register a lib, it checks the
+     current view to see if is lighttable.  If the current
+     view is lighttable then the lib tries to install.
+
+     If the current view is set to lighttable, but the
+     view hasn't completely initialized, and Lua attempts
+     to install the lib the result will be a hang.
+
+     There is a work around in the Lua initialization code,
+     data/luarc, to check that the initialization is complete
+     and set a flag, darktable_gui_safe, when it is safe to
+     register libs
+  */
+
   vm->current_view = new_view;
 
   dt_view_type_flags_t view_type = new_view->view(new_view);
@@ -667,6 +689,48 @@ void dt_view_manager_scrolled(dt_view_manager_t *vm,
     return;
   if(vm->current_view->scrolled)
     vm->current_view->scrolled(vm->current_view, x, y, up, state);
+}
+
+gboolean dt_view_manager_gesture_pan(dt_view_manager_t *vm,
+                                     const double x,
+                                     const double y,
+                                     const double dx,
+                                     const double dy,
+                                     const int state)
+{
+  if(!vm->current_view)
+  {
+    return FALSE;
+  }
+  else if(vm->current_view->gesture_pan)
+  {
+    return vm->current_view->gesture_pan(vm->current_view, x, y, dx, dy, state);
+  }
+  else
+  {
+    return FALSE;
+  }
+}
+
+gboolean dt_view_manager_gesture_pinch(dt_view_manager_t *vm,
+                                       const double x,
+                                       const double y,
+                                       const int phase,
+                                       const double scale,
+                                       const int state)
+{
+  if(!vm->current_view)
+  {
+    return FALSE;
+  }
+  else if(vm->current_view->gesture_pinch)
+  {
+    return vm->current_view->gesture_pinch(vm->current_view, x, y, phase, scale, state);
+  }
+  else
+  {
+    return FALSE;
+  }
 }
 
 void dt_view_manager_scrollbar_changed(dt_view_manager_t *vm,
@@ -1726,8 +1790,10 @@ void dt_view_paint_surface(cairo_t *cr,
                            int buf_height,
                            dt_dev_zoom_pos_t buf_zoom_pos)
 {
-  dt_develop_t *dev = darktable.develop;
-  dt_dev_pixelpipe_t *pp = dev->preview_pipe;
+  // Use the viewport's develop if available, otherwise fall back to global
+  dt_develop_t *dev = port->dev ? port->dev : darktable.develop;
+  // Preview pipe for fallback rendering - only available for main develop
+  dt_dev_pixelpipe_t *pp = darktable.develop->preview_pipe;
 
   int processed_width, processed_height;
   dt_dev_get_processed_size(port, &processed_width, &processed_height);
@@ -1803,20 +1869,27 @@ void dt_view_paint_surface(cairo_t *cr,
   const double trans_x = (offset_x - zoom_x) * processed_width * buf_scale - 0.5 * buf_width;
   const double trans_y = (offset_y - zoom_y) * processed_height * buf_scale - 0.5 * buf_height;
 
-  if(pp->output_imgid == dev->image_storage.id
+  // Check if we should use the preview pipe for fallback rendering
+  // This is only valid for the main develop (not for pinned images which have dev != darktable.develop)
+  const gboolean use_preview_fallback = 
+     (dev == darktable.develop)
+     && pp->output_imgid == dev->image_storage.id
      && (port->pipe->output_imgid != dev->image_storage.id
          || fabsf(backbuf_scale / buf_scale - 1.0f) > .09f
          || floor(maxw / 2 / back_scale) - 1 > MIN(- trans_x, trans_x + buf_width)
          || floor(maxh / 2 / back_scale) - 1 > MIN(- trans_y, trans_y + buf_height))
-     && (port == &dev->full || port == &dev->preview2))
+     && (port == &dev->full || port == &dev->preview2);
+     
+  if(use_preview_fallback)
   {
     port->pipe->changed |= DT_DEV_PIPE_ZOOMED;
     if(port->pipe->status == DT_DEV_PIXELPIPE_VALID)
       port->pipe->status = DT_DEV_PIXELPIPE_DIRTY;
 
     // draw preview
-    const float wd = processed_width * pp->processed_width / MAX(1, dev->full.pipe->processed_width);
-    const float ht = processed_height * pp->processed_width / MAX(1, dev->full.pipe->processed_width);
+    const int full_pipe_width = dev->full.pipe ? dev->full.pipe->processed_width : 1;
+    const float wd = processed_width * pp->processed_width / MAX(1, full_pipe_width);
+    const float ht = processed_height * pp->processed_width / MAX(1, full_pipe_width);
 
     cairo_save(cr);
     cairo_scale(cr, zoom_scale, zoom_scale);

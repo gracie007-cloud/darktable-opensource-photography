@@ -735,7 +735,7 @@ void process(dt_iop_module_t *self,
     if(_noise_requested(self, piece))
       _capture_noise(self, piece);
     if(_radius_requested(self, piece))
-      _capture_radius(self, piece, in, width, height, xtrans, filters);
+      _capture_radius(self, piece, in, roi_in, xtrans, filters);
   }
 
   int overlap = 0;
@@ -941,12 +941,6 @@ int process_cl(dt_iop_module_t *self,
   const int demosaicing_method = d->demosaicing_method;
   int method = demosaicing_method & ~DT_DEMOSAIC_DUAL;
 
-  // We do a PPG to RCD demosaicer fallback here as the used driver is known to fail.
-  // Also could "return DT_OPENCL_DT_EXCEPTION" for a cpu fallback
-  if(method == DT_IOP_DEMOSAIC_PPG
-     && dt_opencl_exception(pipe->devid, DT_OPENCL_AMD_APP))
-    method = DT_IOP_DEMOSAIC_RCD;
-
   const int iwidth = roi_in->width;
   const int iheight = roi_in->height;
 
@@ -1028,7 +1022,7 @@ int process_cl(dt_iop_module_t *self,
     if(_noise_requested(self, piece))
       _capture_noise(self, piece);
     if(_radius_requested(self, piece))
-      _capture_radius_cl(self, piece, dev_in, iwidth, iheight, xtrans, filters, true_monochrome);
+      _capture_radius_cl(self, piece, dev_in, roi_in, xtrans, filters, true_monochrome);
   }
 
   gboolean tiling = FALSE;
@@ -1793,7 +1787,7 @@ void gui_init(dt_iop_module_t *self)
   gtk_widget_set_tooltip_text(g->color_smoothing, _("how many color smoothing median steps after demosaicing"));
 
   g->greeneq = dt_bauhaus_combobox_from_params(self, "green_eq");
-  gtk_widget_set_tooltip_text(g->greeneq, _("green channels matching method. only apply for some old sensors"));
+  gtk_widget_set_tooltip_text(g->greeneq, _("green channels matching method. only applies for some old sensors"));
 
   g->cs_enabled = dt_bauhaus_toggle_from_params(self, "cs_enabled");
   gtk_widget_set_tooltip_text(g->cs_enabled, _("capture sharpen recovers details lost due to in-camera blurring\n"

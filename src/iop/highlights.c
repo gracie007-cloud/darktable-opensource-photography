@@ -399,8 +399,7 @@ void tiling_callback(dt_iop_module_t *self,
   const gboolean is_bayer = filters && (filters != 9u);
   const gboolean is_xtrans = filters && (filters == 9u);
 
-  tiling->xalign = 1;
-  tiling->yalign = 1;
+  tiling->align = 1;
   tiling->overlap = 0;
   tiling->factor = 2.0f;
   tiling->factor_cl = 2.0f;
@@ -627,7 +626,7 @@ int process_cl(dt_iop_module_t *self,
                                     .cellsize = sizeof(float), .overhead = 0,
                                     .sizex = 1 << 8, .sizey = 1 << 8 };
 
-    if(dt_opencl_local_buffer_opt(devid, gd->kernel_highlights_1f_lch_xtrans, &locopt))
+    if(dt_opencl_local_buffer_opt(devid, gd->kernel_highlights_1f_lch_xtrans, &locopt) == CL_SUCCESS)
     {
       blocksizex = locopt.sizex;
       blocksizey = locopt.sizey;
@@ -640,12 +639,11 @@ int process_cl(dt_iop_module_t *self,
 
     size_t sizes[] = { ROUNDUP(roi_in->width, blocksizex), ROUNDUP(roi_in->height, blocksizey), 1 };
     size_t local[] = { blocksizex, blocksizey, 1 };
-    dt_opencl_set_kernel_args(devid, gd->kernel_highlights_1f_lch_xtrans, 0,
+    err = dt_opencl_enqueue_kernel_2d_local_args(devid, gd->kernel_highlights_1f_lch_xtrans, sizes, local,
       CLARG(dev_in), CLARG(dev_out),
       CLARG(roi_in->width), CLARG(roi_in->height),
       CLARG(clip), CLARG(dev_xtrans),
       CLLOCAL(sizeof(float) * (blocksizex + 4) * (blocksizey + 4)));
-    err = dt_opencl_enqueue_kernel_2d_with_local(devid, gd->kernel_highlights_1f_lch_xtrans, sizes, local);
   }
   else if(dmode == DT_IOP_HIGHLIGHTS_LAPLACIAN)
   {

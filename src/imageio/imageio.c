@@ -1287,10 +1287,10 @@ gboolean dt_imageio_export_with_flags(const dt_imgid_t imgid,
     height = pipe.processed_height;
   }
 
-  // note: not perfect but a reasonable good guess looking at overall pixelpipe requirements
-  // and specific stuff in finalscale.
+  // Upscaling in finalscale requires additional memory so the final image size is restricted to avoid dt oom killing
+  const double planesize = sizeof(float) * 4 * pipe.processed_width * pipe.processed_height;
   const double max_possible_scale = fmin(100.0, fmax(1.0, // keep maximum allowed scale as we had in 4.6
-      (double)dt_get_available_pipe_mem(&pipe) / (double)(1 + 64 * sizeof(float) * pipe.processed_width * pipe.processed_height)));
+      (double)dt_get_available_pipe_mem(&pipe) / (1.0 + 2.5 * planesize)));
 
   const gboolean doscale = upscale && ((width > 0 || height > 0) || is_scaling);
   const double max_scale = doscale ? max_possible_scale : 1.00;
@@ -1316,7 +1316,7 @@ gboolean dt_imageio_export_with_flags(const dt_imgid_t imgid,
 
   const int processed_width = floor(scale * pipe.processed_width);
   const int processed_height = floor(scale * pipe.processed_height);
-  if(scale == max_scale && !thumbnail_export)
+  if(scale == max_possible_scale && !thumbnail_export)
     dt_control_log(_("export reduced to %dx%d because of memory restrictions"),
             processed_width, processed_height);
 
@@ -1783,9 +1783,9 @@ cairo_surface_t *dt_imageio_preview(const dt_imgid_t imgid,
 
   dt_imageio_export_with_flags
     (imgid, "preview", &buf, (dt_imageio_module_data_t *)&dat, TRUE, TRUE,
-     high_quality, upscale, is_scaling, scale_factor, FALSE, NULL, FALSE, export_masks,
-     DT_COLORSPACE_DISPLAY, NULL, DT_INTENT_LAST, NULL, NULL, 1, 1, NULL,
-     history_end);
+     high_quality, upscale, is_scaling, scale_factor, FALSE, NULL, FALSE,
+     export_masks, DT_COLORSPACE_DISPLAY, NULL, DT_INTENT_LAST, NULL, NULL,
+     1, 1, NULL, history_end);
 
   const int32_t stride =
     cairo_format_stride_for_width(CAIRO_FORMAT_RGB24, dat.head.width);
